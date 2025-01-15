@@ -1,0 +1,65 @@
+/*
+	@Bean
+    public CommandLineRunner initData(UserRepository usuarioRepository, RolRepository rolRepository, PasswordEncoder passwordEncoder) {
+        return args -> {
+
+            // Crear roles si no existen
+            Rol roleUser = rolRepository.findByName("ROLE_USER")
+                    .orElseGet(() -> rolRepository.save(new Rol("ROLE_USER")));
+
+            Rol roleAdmin = rolRepository.findByName("ROLE_ADMIN")
+                    .orElseGet(() -> rolRepository.save(new Rol("ROLE_ADMIN")));
+
+            Rol roleInvited = rolRepository.findByName("ROLE_INVITED")
+                    .orElseGet(() -> rolRepository.save(new Rol("ROLE_INVITED")));
+			
+            // Crear usuarios con roles asignados
+           
+                Usuario user1 = new Usuario();
+                user1.setUsername("user1");
+                user1.setPassword(passwordEncoder.encode("password1")); // Encriptar contraseña
+                user1.setRoles(Set.of(roleUser));
+                usuarioRepository.save(user1);
+            
+
+            
+                Usuario admin = new Usuario();
+                admin.setUsername("admin");
+                admin.setPassword(passwordEncoder.encode("adminpass")); // Encriptar contraseña
+                admin.setRoles(Set.of(roleAdmin));
+            	 usuarioRepository.save(admin);
+            
+
+            
+                Usuario invitedUser = new Usuario();
+                invitedUser.setUsername("invitedUser");
+                invitedUser.setPassword(passwordEncoder.encode("invitedpass")); // Encriptar contraseña
+                invitedUser.setRoles(Set.of(roleInvited));
+                usuarioRepository.save(invitedUser);
+            
+        };*/// Intentar obtener el Empleado por su ID
+        Optional<Empleado> optionalEmpleado = employeeRepository.findById(id);
+        
+        // Si el empleado existe, procedemos a actualizar
+        if (optionalEmpleado.isPresent()) {
+            Empleado emp = optionalEmpleado.get();
+            
+            // Actualizar los datos básicos del empleado
+            emp.setNombre_empleado(empleado.getNombre_empleado());
+            emp.setApellidos_empleado(empleado.getApellidos_empleado());
+            emp.setSueldo(empleado.getSueldo());
+            
+            // Verificar si `empleado.getDepartamento()` y su ID no son nulos antes de buscar el departamento
+            if (empleado.getDepartamento() != null && empleado.getDepartamento().getId_departamento() != null) {
+                Optional<Departamento> optionalDep = departmentRepository.findById(empleado.getDepartamento().getId_departamento());
+                
+                // Si el departamento existe, lo asignamos
+                optionalDep.ifPresent(emp::setDepartamento);
+            }
+    
+            // Guardar el empleado actualizado y retornar
+            return Optional.of(employeeRepository.save(emp));
+        }
+        
+        // Si no se encuentra el empleado, retornamos Optional.empty()
+        return Optional.empty();

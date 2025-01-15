@@ -1,0 +1,9 @@
+*.log
+*.class
+*.jar
+*.war
+.idea/
+target/
+*.iml
+*.bak
+.DS_Store

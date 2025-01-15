@@ -1,0 +1,80 @@
+package com.frank.springboot.app.springboot_crud.security;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.web.SecurityFilterChain;
+
+import com.frank.springboot.app.springboot_crud.security.filter.JwtAuthenticationFilter;
+import com.frank.springboot.app.springboot_crud.security.filter.JwtValidationFilter;
+
+@Configuration
+public class SpringSecurityConfig {
+    
+    @Autowired
+    private AuthenticationConfiguration authenticationConfiguration;
+    
+    @Bean
+    AuthenticationManager authenticationManager() throws Exception{
+        return authenticationConfiguration.getAuthenticationManager();
+    }
+    
+    @Bean
+    PasswordEncoder passwordEncoder(){
+        return new BCryptPasswordEncoder();
+
+    }
+    @Bean
+    SecurityFilterChain filterChain(HttpSecurity http) throws Exception{
+        return http.authorizeHttpRequests((authz)-> authz
+        .requestMatchers(HttpMethod.POST,"/api/users/register").permitAll()
+        .requestMatchers(HttpMethod.GET,"/api/users/list").permitAll()
+        .requestMatchers(HttpMethod.GET,"/api/products/list","/api/products/findById/{id}").hasAnyRole("USER","ADMIN")
+        .requestMatchers(HttpMethod.POST,"/api/users/create").hasRole("ADMIN")
+        .requestMatchers(HttpMethod.POST,"/api/products/create").hasRole("ADMIN")
+        .requestMatchers(HttpMethod.PUT,"/api/products/{id}").hasRole("ADMIN")
+        .requestMatchers(HttpMethod.DELETE,"/api/products/{id}").hasRole("ADMIN")
+        .anyRequest().authenticated()) // en esta linea me dice q cualquier otra solicitud q no haya sido mencionada requerira autenticacion
+        .addFilter(new JwtAuthenticationFilter(authenticationManager()))
+        .addFilter(new JwtValidationFilter(authenticationManager()))
+        .csrf(config->config.disable())//desactiva la proteccion csrf. se suele desactivar en apis rest que usan jwt
+        .sessionManagement(managment-> managment.sessionCreationPolicy(SessionCreationPolicy.STATELESS))//configura el manejo de sesiones
+        .build();
+    }
+
+}
+
+
+
+package com.frank.springboot.app.springboot_crud.security;
+import javax.crypto.SecretKey;
+import io.jsonwebtoken.Jwts;
+
+public class TokenJwtConfig {
+    // //Es la clave secreta que se utiliza para firmar el JWT.
+    public static final SecretKey SECRET_KEY = Jwts.SIG.HS256.key().build(); 
+    public static final String PREFIX_TOKEN = "Bearer ";
+    public static final String HEADER_AUTHORIZATION = "Authorization";
+    public static final String CONTENT_TYPE = "application/json";
+}
+  
+
+
+
+
+public abstract class SimpleGrantedAuthorityJsonCreator {
+    @JsonCreator
+    public SimpleGrantedAuthorityJsonCreator(@JsonProperty("authority") String role){
+    }
+
+}
+
+
+

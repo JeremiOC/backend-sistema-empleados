@@ -1,0 +1,130 @@
+package com.frank.springboot.app.springboot_crud.security.filter;
+
+import java.io.IOException;
+
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.AuthenticationException;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import java.util.Collection;
+import com.fasterxml.jackson.core.exc.StreamReadException;
+import com.fasterxml.jackson.databind.DatabindException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.frank.springboot.app.springboot_crud.entities.User;
+
+import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.Jwts;
+import java.util.Map;
+import java.util.Date;
+import java.util.HashMap;
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+
+import static com.frank.springboot.app.springboot_crud.security.TokenJwtConfig.*;
+
+public class JwtAuthenticationFilter extends UsernamePasswordAuthenticationFilter{
+    
+   // Este AuthenticationManager maneja el proceso de autenticación del usuario.
+   private AuthenticationManager authenticationManager;
+
+   // Constructor que recibe el AuthenticationManager y lo asigna a la variable de clase.
+   public JwtAuthenticationFilter(AuthenticationManager authenticationManager) {
+       this.authenticationManager = authenticationManager;
+   }
+
+   // Este método se llama cuando un usuario intenta autenticarse (por ejemplo, al enviar su nombre de usuario y contraseña).
+   @Override
+   public Authentication attemptAuthentication(HttpServletRequest request, HttpServletResponse response)
+           throws AuthenticationException {
+       
+       // Variables para almacenar las credenciales (nombre de usuario y contraseña).
+       User user = null;
+       String username = null;
+       String password = null;
+
+       // Aquí estamos extrayendo el cuerpo de la solicitud HTTP, que debería contener un JSON con las credenciales del usuario (username y password).
+       try {
+           // Se convierte el JSON del cuerpo de la solicitud a un objeto User (que contiene el username y password).
+           user = new ObjectMapper().readValue(request.getInputStream(), User.class);
+           username = user.getUsername();
+           password = user.getPassword();  
+       } catch (StreamReadException e) {
+           e.printStackTrace();
+       } catch (DatabindException e) {
+           e.printStackTrace();
+       } catch (IOException e) {
+           e.printStackTrace();
+       }
+
+       // Se crea un token de autenticación con las credenciales proporcionadas (nombre de usuario y contraseña).
+       UsernamePasswordAuthenticationToken authenticationToken = new UsernamePasswordAuthenticationToken(username, password);
+       
+       // Se pasa el token al authenticationManager para que lo autentique.
+       return authenticationManager.authenticate(authenticationToken);
+   }
+
+   // Este método se ejecuta si la autenticación es exitosa.
+   @Override
+   protected void successfulAuthentication(HttpServletRequest request, HttpServletResponse response, FilterChain chain,
+           Authentication authResult) throws IOException, ServletException {
+
+       // Extraemos el usuario autenticado (obtenido en el proceso de autenticación) y hacemos un casting a `UserDetails`.
+       org.springframework.security.core.userdetails.User user = (org.springframework.security.core.userdetails.User) authResult.getPrincipal();
+   
+       // Extraemos el nombre de usuario del objeto `UserDetails`.
+       String username = user.getUsername();
+
+       // Obtenemos los roles (authorities) del usuario autenticado.
+       Collection<? extends GrantedAuthority> roles = authResult.getAuthorities();
+
+       // Creamos los "claims", que son datos adicionales que queremos incluir en el JWT. Aquí se incluyen los roles y el nombre de usuario.
+       Claims claims = Jwts.claims()
+                    .add("authorities",new ObjectMapper().writeValueAsString(roles)).add("username", username).build();
+
+       // Generamos el token JWT. Se establece el nombre de usuario como el "subject" del token, se añaden los claims,
+       // se define una expiración de 1 hora y se firma el token con la clave secreta.
+       String token = Jwts.builder()
+                          .subject(username) // El "subject" del token es el username.
+                          .claims(claims)     // Se añaden los claims al token.
+                          .expiration(new Date(System.currentTimeMillis() + 3600000)) // Expira en 1 hora.
+                          .issuedAt(new Date()) // Fecha de emisión.
+                          .signWith(SECRET_KEY) // Se firma con la clave secreta.
+                          .compact(); // Se genera el token como una cadena compacta (JWT).
+
+       // Se añade el token al encabezado de la respuesta, bajo la clave "Authorization".
+       response.addHeader(HEADER_AUTHORIZATION, PREFIX_TOKEN + token);
+
+       // Creamos una respuesta en JSON que contiene el token, el nombre de usuario y un mensaje de éxito.
+       Map<String, String> body = new HashMap<>();
+       body.put("token", token);
+       body.put("username", username);
+       body.put("message", String.format("Hola %s, has iniciado sesión con éxito", username));
+
+       // Convertimos el mapa a JSON y lo enviamos como respuesta al cliente.
+       response.getWriter().write(new ObjectMapper().writeValueAsString(body));
+       response.setContentType(CONTENT_TYPE);
+       response.setStatus(200); // Se establece el estado HTTP a 200 (OK).
+   }
+
+   // Este método se ejecuta si la autenticación falla (por ejemplo, si el nombre de usuario o la contraseña son incorrectos).
+   @Override
+   protected void unsuccessfulAuthentication(HttpServletRequest request, HttpServletResponse response,
+           AuthenticationException failed) throws IOException, ServletException {
+
+       // Creamos un cuerpo de respuesta con un mensaje de error.
+       Map<String, String> body = new HashMap<>();
+       body.put("message", "Error en la autenticación: username o password incorrectos!");
+       body.put("error", failed.getMessage());
+
+       // Convertimos el mapa a JSON y lo enviamos como respuesta al cliente.
+       response.getWriter().write(new ObjectMapper().writeValueAsString(body));
+       response.setStatus(401); // Se establece el estado HTTP a 401 (No autorizado).
+       response.setContentType(CONTENT_TYPE);
+   }
+        
+}   
+

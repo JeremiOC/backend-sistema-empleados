@@ -1,0 +1,117 @@
+package com.frank.springboot.app.springboot_crud.security.filter;
+
+import static com.frank.springboot.app.springboot_crud.security.TokenJwtConfig.CONTENT_TYPE;
+import static com.frank.springboot.app.springboot_crud.security.TokenJwtConfig.HEADER_AUTHORIZATION;
+import static com.frank.springboot.app.springboot_crud.security.TokenJwtConfig.PREFIX_TOKEN;
+import static com.frank.springboot.app.springboot_crud.security.TokenJwtConfig.SECRET_KEY;
+import java.util.Arrays;
+import java.io.IOException;
+import java.util.Collection;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.web.authentication.www.BasicAuthenticationFilter;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.frank.springboot.app.springboot_crud.security.SimpleGrantedAuthorityJsonCreator;
+import java.util.Map;
+import java.util.HashMap;
+import io.jsonwebtoken.Claims;
+import io.jsonwebtoken.JwtException;
+import io.jsonwebtoken.Jwts;
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+
+public class JwtValidationFilter extends BasicAuthenticationFilter {
+
+    
+    // Constructor que recibe un AuthenticationManager y lo pasa a la clase padre (BasicAuthenticationFilter).
+    public JwtValidationFilter(AuthenticationManager authenticationManager) {
+        super(authenticationManager);
+    }
+
+    // Método encargado de realizar la validación del token JWT en cada solicitud.
+    @Override
+    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
+            throws IOException, ServletException {
+        
+        // 1. Obtengo el valor del encabezado "Authorization" de la solicitud HTTP
+        String header = request.getHeader(HEADER_AUTHORIZATION);
+        
+        // 2. Si no hay token en el encabezado o si el token no empieza con el prefijo correcto (e.g., "Bearer "), simplemente retorno y no hago nada.
+        if (header == null || !header.startsWith(PREFIX_TOKEN)) {
+            chain.doFilter(request, response);
+            return;
+        }
+
+        // 3. Elimino el prefijo del token (e.g., "Bearer ") para obtener el token puro.
+        String token = header.replace(PREFIX_TOKEN, "");
+
+        try {
+            // 4. Valido y analizo el token con la clave secreta.
+            Claims claims = Jwts.parser()
+                                .verifyWith(SECRET_KEY) // Verifico el token con la clave secreta.
+                                .build() // Construyo el validador.
+                                .parseSignedClaims(token) // Parseo el token firmado y obtengo sus datos (Claims).
+                                .getPayload(); // Obtengo el "payload" (contenido) del token.
+
+            // 5. Extraigo el username (que fue establecido como "subject" del token cuando se generó).
+            String username = claims.getSubject();
+            
+            // 6. Extraigo las autoridades (roles o permisos) del token. 
+            // Estas son almacenadas como parte del "payload" del JWT.
+            Object authoritiesClaims = claims.get("authorities");
+
+            // 7. Convierto la cadena JSON de autoridades a una lista de objetos GrantedAuthority.
+            Collection<? extends GrantedAuthority> authorities = Arrays.asList(
+                new ObjectMapper()
+                    .addMixIn(SimpleGrantedAuthority.class, SimpleGrantedAuthorityJsonCreator.class) // Uso un mixin para convertir JSON a SimpleGrantedAuthority.
+                    .readValue(authoritiesClaims.toString().getBytes(), SimpleGrantedAuthority[].class) // Convierto el JSON a una lista de roles (autoridades).
+            );
+
+            // 8. Creo un UsernamePasswordAuthenticationToken, que es el objeto que Spring Security usa para manejar la autenticación en el contexto de seguridad.
+            // En este caso, solo el username y las autoridades son necesarias, ya que no estamos revalidando la contraseña en esta fase.
+            UsernamePasswordAuthenticationToken authenticationToken = 
+                new UsernamePasswordAuthenticationToken(username, null, authorities);
+
+            // 9. Asigno el token de autenticación al contexto de seguridad de Spring.
+            // Esto le dice a Spring que el usuario está autenticado.
+            SecurityContextHolder.getContext().setAuthentication(authenticationToken);
+
+            // 10. Continúo con el siguiente filtro en la cadena.
+            chain.doFilter(request, response);
+
+        } catch (JwtException e) {
+            // 11. Si el token es inválido (por ejemplo, si ha sido manipulado o ha expirado), capturo la excepción.
+            // Preparo una respuesta JSON con un mensaje de error.
+
+            Map<String, String> body = new HashMap<>();
+            body.put("error", e.getMessage()); // Incluyo el mensaje de la excepción.
+            body.put("message", "El token JWT no es válido");
+
+            // 12. Envío la respuesta JSON al cliente con un estado de error 401 (No autorizado).
+            response.getWriter().write(new ObjectMapper().writeValueAsString(body)); // Convierto el mapa de errores a JSON.
+            response.setStatus(401); // Establezco el estado HTTP a 401.
+            response.setContentType(CONTENT_TYPE); // Defino el tipo de contenido como JSON.
+        }
+    }
+    /*El flujo general es así:
+
+        1.Intercepta la solicitud HTTP.
+        2.Revisa si la solicitud tiene un token JWT en el encabezado Authorization.
+        3.Si no tiene token o el formato es incorrecto, no hace nada.
+        4.Si tiene un token JWT válido, lo verifica usando la clave secreta.
+        5.Extrae el nombre de usuario y los roles (permisos) del token.
+        6.Crea un objeto de autenticación usando esa información.
+        7.Coloca este objeto de autenticación en el contexto de seguridad de Spring Security.
+        8.Permite que la solicitud siga su curso si la autenticación es exitosa.
+     * 
+     * 
+     */
+    
+}
+
